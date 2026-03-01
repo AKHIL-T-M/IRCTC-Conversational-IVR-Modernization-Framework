@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>IRCTC IVR Simulator</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+
+<div class="ivr-wrapper">
+
+  <div class="ivr-header">
+    <div class="ivr-logo-badge">
+      <div class="logo-dot"></div>
+      <span class="logo-text">IRCTC · IVR</span>
+    </div>
+    <h1 class="ivr-title">Conversational <span>IVR</span></h1>
+    <p class="ivr-subtitle">// AI-Powered Voice Interface //</p>
+  </div>
+
+  <div class="ivr-card">
+
+    <!-- Corner decorations -->
+    <div class="corner corner-tl"></div>
+    <div class="corner corner-tr"></div>
+    <div class="corner corner-bl"></div>
+    <div class="corner corner-br"></div>
+
+    <p class="menu-label">Select Service</p>
+
+    <div class="menu-grid">
+      <button class="menu-btn" onclick="selectOption('1')">
+        <div class="btn-key">1</div>
+        <div class="btn-info">
+          <span class="btn-title">Ticket Booking</span>
+          <span class="btn-desc">Book a journey</span>
+        </div>
+      </button>
+
+      <button class="menu-btn" onclick="selectOption('2')">
+        <div class="btn-key">2</div>
+        <div class="btn-info">
+          <span class="btn-title">PNR Status</span>
+          <span class="btn-desc">Check booking</span>
+        </div>
+      </button>
+
+      <button class="menu-btn" onclick="selectOption('3')">
+        <div class="btn-key">3</div>
+        <div class="btn-info">
+          <span class="btn-title">Cancel Ticket</span>
+          <span class="btn-desc">Refund process</span>
+        </div>
+      </button>
+
+      <button class="menu-btn" onclick="selectOption('4')">
+        <div class="btn-key">4</div>
+        <div class="btn-info">
+          <span class="btn-title">Train Availability</span>
+          <span class="btn-desc">Check seats</span>
+        </div>
+      </button>
+
+      <button class="menu-btn menu-btn-wide" onclick="selectOption('9')">
+        <div class="btn-key">9</div>
+        <div class="btn-info">
+          <span class="btn-title">Talk to Customer Care Agent</span>
+          <span class="btn-desc">Connect to live support</span>
+        </div>
+      </button>
+    </div>
+
+    <div class="input-section">
+      <label class="input-label" for="userInput">Manual Input</label>
+      <div class="input-row">
+        <input
+          type="text"
+          id="userInput"
+          class="ivr-input"
+          placeholder="Type option or message..."
+          onkeydown="if(event.key==='Enter') sendInput()"
+          autocomplete="off"
+        />
+        <button class="ivr-submit" onclick="sendInput()">Send</button>
+      </div>
+    </div>
+
+    <!-- Response Box — proper chat-style -->
+    <div class="response-box" id="responseBox">
+      <div class="response-header">
+        <div class="response-avatar">IVR</div>
+        <span class="response-title">IRCTC Assistant</span>
+        <span class="response-status" id="responseStatus">●&nbsp; Online</span>
+      </div>
+      <div class="response-body" id="responseText">
+        <div class="loading-dots"><span></span><span></span><span></span></div>
+      </div>
+    </div>
+
+    <div class="ivr-footer">
+      <div class="status-dot">SYSTEM ONLINE</div>
+      <span class="session-tag" id="sessionTag"></span>
+      <button class="restart-btn" onclick="restartSession()">↺ Restart</button>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  const sessionId = "user123";
+  document.getElementById('sessionTag').textContent = `SESSION: ${sessionId.toUpperCase()}`;
+
+  function setLoading(on) {
+    const box  = document.getElementById('responseBox');
+    const body = document.getElementById('responseText');
+    if (on) {
+      box.classList.remove('has-response');
+      box.classList.add('loading');
+      body.innerHTML = '<div class="loading-dots"><span></span><span></span><span></span></div>';
+    }
+  }
+
+  function setResponse(text) {
+    const box  = document.getElementById('responseBox');
+    const body = document.getElementById('responseText');
+    box.classList.remove('loading');
+    box.classList.add('has-response');
+    // Preserve newlines → render as <br> lines
+    body.innerHTML = text
+      .split('\n')
+      .map(line => line.trim() === ''
+        ? '<div class="resp-spacer"></div>'
+        : `<div class="resp-line">${escHtml(line)}</div>`)
+      .join('');
+    body.classList.remove('animate');
+    void body.offsetWidth;
+    body.classList.add('animate');
+  }
+
+  function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  async function selectOption(val) {
+    document.querySelectorAll('.menu-btn').forEach(b => b.classList.remove('active'));
+    const btns = document.querySelectorAll('.menu-btn');
+    const idx  = ['1','2','3','4','9'].indexOf(val);
+    if (idx >= 0) btns[idx].classList.add('active');
+    document.getElementById('userInput').value = val;
+    await sendInput();
+  }
+
+  async function sendInput() {
+    const input = document.getElementById('userInput').value.trim();
+    setLoading(true);
+
+    try {
+      const response = await fetch('/ivr', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId, input })
+      });
+      const data = await response.json();
+      setResponse(data.text);
+    } catch {
+      setResponse('⚠ Connection error. Please try again.');
+    }
+
+    document.getElementById('userInput').value = '';
+  }
+
+  async function restartSession() {
+    try {
+      await fetch('/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId, input: "" })
+      });
+    } catch {}
+    document.querySelectorAll('.menu-btn').forEach(b => b.classList.remove('active'));
+    setResponse('Session restarted.\n\nPlease select a service option above.');
+  }
+
+  // Auto-load welcome on page open
+  window.onload = () => sendInput();
+</script>
+
+</body>
+</html>
