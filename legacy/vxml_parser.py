@@ -6,7 +6,7 @@ def get_main_menu():
         "2": {"text": "You selected PNR Status.", "next": "pnr"},
         "3": {"text": "You selected Cancel Ticket.", "next": "cancel"},
         "4": {"text": "You selected Train Availability.", "next": "availability"},
-        "9": {"text": "Connecting to customer care agent.", "next": "agent"}
+        "5": {"text": "Connecting to customer care agent.", "next": "agent"}
     }
 
 
