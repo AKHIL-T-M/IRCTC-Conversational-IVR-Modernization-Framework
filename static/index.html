@@ -1,357 +1,1295 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>IRCTC IVR Simulator</title>
-<link rel="stylesheet" href="/static/style.css" />
-</head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IRCTC IVR Caller</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+  :root {
+    --bg: #0a0c10;
+    --surface: #111318;
+    --surface2: #181c24;
+    --border: rgba(255,255,255,0.07);
+    --green: #00e676;
+    --green-dim: rgba(0,230,118,0.15);
+    --red: #ff3d57;
+    --red-dim: rgba(255,61,87,0.15);
+    --blue: #448aff;
+    --blue-dim: rgba(68,138,255,0.12);
+    --amber: #ffc400;
+    --amber-dim: rgba(255,196,0,0.12);
+    --text: #e8eaf0;
+    --muted: rgba(232,234,240,0.45);
+    --mono: 'JetBrains Mono', monospace;
+    --display: 'Syne', sans-serif;
+  }
+
+  body {
+    background: var(--bg);
+    font-family: var(--mono);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+    padding: 16px;
+    overflow: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none; z-index: 0;
+  }
+
+  .app {
+    display: flex;
+    gap: 14px;
+    align-items: stretch;
+    width: 100%;
+    max-width: 1100px;
+    height: 100%;
+    max-height: calc(100vh - 32px);
+    position: relative; z-index: 1;
+  }
+
+  /* ── LEFT: PHONE (wider, denser layout) ── */
+  .phone {
+    width: 460px;
+    flex-shrink: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    padding: 18px 20px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .phone::before {
+    content: '';
+    position: absolute;
+    top: -60px; left: 50%;
+    transform: translateX(-50%);
+    width: 200px; height: 200px;
+    border-radius: 50%;
+    background: var(--green-dim);
+    filter: blur(70px);
+    pointer-events: none;
+    transition: background 0.6s ease;
+  }
+  .phone.calling::before { background: rgba(255,200,0,0.12); }
+  .phone.active::before { background: var(--green-dim); }
+  .phone.ended::before { background: var(--red-dim); }
+
+  /* ── TOP ROW: avatar + info + status ── */
+  .phone-top {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .avatar-ring {
+    width: 62px; height: 62px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    border: 1.5px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+    background: var(--surface2);
+  }
+  .avatar-ring .icon { font-size: 26px; }
+  .avatar-ring .wave {
+    position: absolute; inset: -8px;
+    border-radius: 50%;
+    border: 1px solid rgba(0,230,118,0.2);
+    animation: waveOut 2s infinite;
+    opacity: 0;
+    display: none;
+  }
+  .avatar-ring .wave:nth-child(2) { animation-delay: 0.5s; }
+  .avatar-ring .wave:nth-child(3) { animation-delay: 1s; inset: -16px; }
+  .phone.active .avatar-ring .wave { display: block; }
+
+  @keyframes waveOut {
+    0% { opacity: 0.6; transform: scale(0.95); }
+    100% { opacity: 0; transform: scale(1.3); }
+  }
+
+  .phone-info {
+    flex: 1;
+    min-width: 0;
+  }
+  .app-label {
+    font-family: var(--display);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .contact-name {
+    font-family: var(--display);
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--text);
+    line-height: 1.1;
+    margin-top: 1px;
+  }
+  .contact-number {
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.18em;
+    margin-top: 3px;
+  }
+
+  .phone-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 4px 11px;
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    transition: all 0.4s ease;
+    white-space: nowrap;
+  }
+  .status-badge .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.4s ease;
+    flex-shrink: 0;
+  }
+  .status-badge.calling { color: #ffc400; border-color: rgba(255,196,0,0.3); }
+  .status-badge.calling .dot { background: #ffc400; animation: pulse 1s infinite; }
+  .status-badge.active { color: var(--green); border-color: rgba(0,230,118,0.3); }
+  .status-badge.active .dot { background: var(--green); animation: pulse 2s infinite; }
+  .status-badge.ended { color: var(--red); border-color: rgba(255,61,87,0.3); }
+  .status-badge.ended .dot { background: var(--red); animation: none; }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.8); }
+  }
+
+  .call-timer {
+    font-size: 12px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.12em;
+  }
+
+  /* ── CONTROLS ROW ── */
+  .call-controls {
+    display: flex;
+    gap: 10px;
+  }
+  .ctrl-btn {
+    flex: 1;
+    padding: 10px 8px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    gap: 6px;
+    transition: all 0.2s ease;
+  }
+  .ctrl-btn:hover { border-color: rgba(255,255,255,0.15); background: #1e2330; }
+  .ctrl-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .ctrl-btn.green {
+    background: var(--green-dim);
+    border-color: rgba(0,230,118,0.3);
+    color: var(--green);
+  }
+  .ctrl-btn.green:hover:not(:disabled) { background: rgba(0,230,118,0.22); }
+  .ctrl-btn.red {
+    background: var(--red-dim);
+    border-color: rgba(255,61,87,0.3);
+    color: var(--red);
+  }
+  .ctrl-btn.red:hover:not(:disabled) { background: rgba(255,61,87,0.22); }
+
+  .voice-btn {
+    flex: 1;
+    padding: 10px 8px;
+    border-radius: 12px;
+    border: 1.5px solid rgba(255,196,0,0.35);
+    background: var(--amber-dim);
+    color: var(--amber);
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    transition: all 0.25s ease;
+    box-shadow: 0 0 14px rgba(255,196,0,0.1);
+  }
+  .voice-btn:hover:not(:disabled) {
+    background: rgba(255,196,0,0.22);
+    box-shadow: 0 0 22px rgba(255,196,0,0.25);
+    border-color: rgba(255,196,0,0.6);
+  }
+  .voice-btn.listening {
+    border-color: var(--red) !important;
+    background: var(--red-dim) !important;
+    color: var(--red) !important;
+    box-shadow: 0 0 22px rgba(255,61,87,0.35) !important;
+    animation: micPulse 1s infinite;
+  }
+  .voice-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  @keyframes micPulse {
+    0%, 100% { box-shadow: 0 0 24px rgba(255,61,87,0.35); }
+    50% { box-shadow: 0 0 40px rgba(255,61,87,0.6); }
+  }
+
+  .divider {
+    height: 1px;
+    background: var(--border);
+    margin: 0 -4px;
+  }
+
+  /* ── INPUT + DIALPAD ── */
+  .dialpad-wrap {
+    opacity: 0.3;
+    pointer-events: none;
+    transition: opacity 0.4s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 1;
+  }
+  .dialpad-wrap.unlocked { opacity: 1; pointer-events: all; }
+
+  /* Input hint & buffer row */
+  .input-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .input-hint {
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .input-hint.waiting { color: var(--amber); }
+
+  .pressed-display {
+    flex: 1;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 12px;
+    letter-spacing: 0.2em;
+    color: var(--blue);
+    font-family: var(--mono);
+    display: flex; align-items: center; justify-content: space-between;
+    transition: border-color 0.3s;
+    min-width: 0;
+  }
+  .pressed-display.buffering {
+    border-color: rgba(255,196,0,0.4);
+    color: var(--amber);
+  }
+  .buf-count {
+    font-size: 9px;
+    color: var(--muted);
+    letter-spacing: 0.05em;
+    flex-shrink: 0;
+  }
+
+  .digit-progress {
+    height: 2px;
+    border-radius: 2px;
+    background: var(--border);
+    overflow: hidden;
+    display: none;
+  }
+  .digit-progress.show { display: block; }
+  .digit-progress-fill {
+    height: 100%;
+    background: var(--amber);
+    border-radius: 2px;
+    width: 0%;
+    transition: width 0.2s ease, background 0.3s;
+  }
+  .digit-progress-fill.complete { background: var(--green); }
+
+  /* Buffer action buttons inline */
+  .buf-actions {
+    display: none;
+    gap: 6px;
+  }
+  .buf-actions.show { display: flex; }
+
+  .send-btn, .clear-btn {
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    display: flex;
+    align-items: center; justify-content: center;
+    gap: 5px;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+  .send-btn {
+    border: 1px solid rgba(0,230,118,0.3);
+    background: var(--green-dim);
+    color: var(--green);
+    flex: 1;
+  }
+  .send-btn:hover { background: rgba(0,230,118,0.25); }
+  .clear-btn {
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+  }
+  .clear-btn:hover { color: var(--red); border-color: rgba(255,61,87,0.3); }
+
+  /* ── DIALPAD: wider 3-col grid ── */
+  .dialpad-mode-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+  .mode-toggle-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    border-radius: 7px;
+    border: 1px solid rgba(68,138,255,0.3);
+    background: var(--blue-dim);
+    color: var(--blue);
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .mode-toggle-btn:hover { background: rgba(68,138,255,0.22); }
+  .mode-toggle-btn.alpha-mode {
+    border-color: rgba(255,196,0,0.4);
+    background: var(--amber-dim);
+    color: var(--amber);
+  }
+  .mode-indicator {
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    color: var(--muted);
+    font-weight: 700;
+  }
+
+  .dialpad {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    flex: 1;
+  }
+  .dialpad button {
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 20px;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 0;
+    position: relative;
+    transition: all 0.15s ease;
+    line-height: 1;
+    padding: 12px 0;
+  }
+  .dialpad button sub {
+    font-size: 7px;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+  .dialpad button:hover {
+    background: var(--surface);
+    border-color: rgba(68,138,255,0.4);
+    color: var(--blue);
+  }
+  .dialpad button:active {
+    transform: scale(0.91);
+    background: var(--blue-dim);
+    border-color: rgba(68,138,255,0.6);
+  }
+  .dialpad button.flash {
+    background: var(--blue-dim);
+    border-color: rgba(68,138,255,0.7);
+    color: var(--blue);
+    transform: scale(0.93);
+  }
+
+  /* ── ALPHA KEYBOARD ── */
+  .alpha-pad { width: 100%; }
+  .alpha-rows { display: flex; flex-direction: column; gap: 4px; }
+  .alpha-row { display: flex; gap: 4px; justify-content: center; }
+  .alpha-row-center { padding: 0 4px; }
+  .alpha-key {
+    flex: 1;
+    height: 30px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
+    min-width: 0; padding: 0;
+  }
+  .alpha-key:hover { background: var(--surface); border-color: rgba(68,138,255,0.4); color: var(--blue); }
+  .alpha-key:active { transform: scale(0.88); background: var(--blue-dim); }
+  .alpha-key.flash { background: var(--amber-dim); border-color: rgba(255,196,0,0.5); color: var(--amber); transform: scale(0.9); }
+  .alpha-wide { flex: 1.5; }
+  .alpha-del { color: var(--red); border-color: rgba(255,61,87,0.2); }
+  .alpha-del:hover { border-color: rgba(255,61,87,0.4); background: var(--red-dim); color: var(--red); }
+  .alpha-space { flex: 6; font-size: 9px; letter-spacing: 0.15em; color: var(--muted); }
+  .alpha-space:hover { color: var(--text); }
+
+  /* ── RIGHT: LOG PANEL ── */
+  .log-panel {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 0;
+    position: relative;
+  }
+
+  .panel-header {
+    padding: 14px 18px 12px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .panel-title {
+    font-family: var(--display);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .panel-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--border);
+    transition: background 0.4s;
+  }
+  .panel-dot.live { background: var(--green); animation: pulse 2s infinite; }
+
+  .voice-viz {
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .viz-label {
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .waveform {
+    flex: 1;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+  .waveform .bar {
+    flex: 1;
+    border-radius: 2px;
+    background: var(--border);
+    height: 4px;
+    transition: height 0.12s ease, background 0.3s;
+  }
+  .waveform.active .bar {
+    background: var(--green);
+    animation: waveAnim var(--d, 0.4s) infinite alternate ease-in-out;
+    animation-delay: var(--delay, 0s);
+  }
+  .waveform.listening .bar {
+    background: var(--amber);
+    animation: waveAnim var(--d, 0.4s) infinite alternate ease-in-out;
+    animation-delay: var(--delay, 0s);
+  }
+  @keyframes waveAnim {
+    from { height: 3px; }
+    to { height: var(--h, 24px); }
+  }
+
+  .live-transcript {
+    padding: 5px 16px 0;
+    font-size: 11px;
+    color: var(--amber);
+    letter-spacing: 0.05em;
+    min-height: 18px;
+    font-style: italic;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .live-transcript.show { opacity: 1; }
+
+  .transcript {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    scroll-behavior: smooth;
+  }
+  .transcript::-webkit-scrollbar { width: 4px; }
+  .transcript::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .msg {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    animation: msgIn 0.3s ease;
+  }
+  @keyframes msgIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .msg-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .msg-tag {
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    border: 1px solid;
+  }
+  .msg-tag.ivr { color: var(--blue); border-color: rgba(68,138,255,0.35); background: var(--blue-dim); }
+  .msg-tag.user { color: var(--green); border-color: rgba(0,230,118,0.3); background: var(--green-dim); }
+  .msg-tag.sys { color: var(--muted); border-color: var(--border); background: var(--surface2); }
+  .msg-tag.voice { color: var(--amber); border-color: rgba(255,196,0,0.3); background: var(--amber-dim); }
+
+  .msg-body {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 9px 13px;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--text);
+    white-space: pre-line;
+  }
+  .msg.ivr .msg-body { border-color: rgba(68,138,255,0.15); }
+  .msg.user .msg-body { border-color: rgba(0,230,118,0.12); }
+  .msg.voice .msg-body { border-color: rgba(255,196,0,0.15); }
+
+  .processing {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 13px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .processing.show { display: flex; }
+  .processing .dots span {
+    display: inline-block;
+    width: 4px; height: 4px;
+    border-radius: 50%;
+    background: var(--blue);
+    animation: dotBounce 1.2s infinite;
+    margin: 0 1px;
+  }
+  .processing .dots span:nth-child(2) { animation-delay: 0.2s; }
+  .processing .dots span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes dotBounce {
+    0%, 80%, 100% { transform: scale(0.7); opacity: 0.4; }
+    40% { transform: scale(1); opacity: 1; }
+  }
+
+  .empty-state {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-align: center;
+  }
+  .empty-state .icon { font-size: 28px; opacity: 0.3; }
+  .empty-state p { opacity: 0.5; }
+</style>
+</head>
 <body>
 
-<div class="ivr-wrapper">
+<div class="app">
 
-<div class="ivr-header">
-<div class="ivr-logo-badge">
-<div class="logo-dot"></div>
-<span class="logo-text">IRCTC · IVR</span>
+  <!-- ── PHONE PANEL ── -->
+  <div class="phone" id="phone">
+
+    <!-- Top row: avatar + info + status/timer -->
+    <div class="phone-top">
+      <div class="avatar-ring">
+        <div class="icon">🚂</div>
+        <div class="wave"></div>
+        <div class="wave"></div>
+        <div class="wave"></div>
+      </div>
+      <div class="phone-info">
+        <div class="app-label">IVR Caller</div>
+        <div class="contact-name">IRCTC</div>
+        <div style="font-size:11px;color:var(--muted);letter-spacing:0.18em;margin-top:2px;">+91 139</div>
+      </div>
+      <div class="phone-right">
+        <div class="status-badge" id="statusBadge">
+          <div class="dot"></div>
+          <span id="statusText">Not Connected</span>
+        </div>
+        <div class="call-timer" id="callTimer">--:--</div>
+      </div>
+    </div>
+
+    <!-- Controls: Call, End, Speak all in one row -->
+    <div class="call-controls">
+      <button class="ctrl-btn green" id="startBtn" onclick="startCall()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg>
+        Call
+      </button>
+      <button class="ctrl-btn red" id="endBtn" onclick="endCall()" disabled>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M20.9 11.4C17.1 7.6 11.9 5.7 6.6 6.1l2.5 2.5c1 .1 1.9.3 2.9.6l1.5-1.5c2.2.9 4.1 2.3 5.6 4.1L17.6 13c.3 1 .5 2 .5 3.1L20.6 18.5c.5-5.2-1.3-10.5-5.1-14.3"/><path d="m22.6 2.7-.9-.9-19 19 .9.9 19-19z"/></svg>
+        End
+      </button>
+      <button class="voice-btn" id="voiceBtn" onclick="toggleVoice()" disabled>
+        <span>🎙️</span>
+        <span id="voiceBtnLabel">Tap to Speak</span>
+      </button>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Dialpad section -->
+    <div class="dialpad-wrap" id="dialpadWrap">
+
+      <!-- Input display row -->
+      <div class="input-row">
+        <div class="input-hint" id="inputHint">Enter IVR Option</div>
+        <div class="pressed-display" id="pressedDisplay">
+          <span id="pressedPlaceholder">_ _ _</span>
+          <span class="buf-count" id="bufCount"></span>
+        </div>
+      </div>
+
+      <div class="digit-progress" id="digitProgress">
+        <div class="digit-progress-fill" id="digitProgressFill"></div>
+      </div>
+
+      <!-- Send + Clear (shown during buffered input) -->
+      <div class="buf-actions" id="bufActions">
+        <button class="clear-btn" id="clearBtn" onclick="clearBuffer()">⌫ Clear</button>
+        <button class="send-btn" id="sendBtn" onclick="sendBuffered()">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+          Send
+        </button>
+      </div>
+
+      <!-- Mode toggle -->
+      <div class="dialpad-mode-row">
+        <div class="mode-indicator" id="modeIndicator">NUM</div>
+        <button class="mode-toggle-btn" id="modeToggleBtn" onclick="toggleDialpadMode()">
+          <span id="modeToggleIcon">🔡</span>
+          <span id="modeToggleLabel">ABC</span>
+        </button>
+      </div>
+
+      <!-- Number dialpad -->
+      <div class="dialpad" id="dialpadNum">
+        <button onclick="pressKey('1')">1<sub>—</sub></button>
+        <button onclick="pressKey('2')">2<sub>ABC</sub></button>
+        <button onclick="pressKey('3')">3<sub>DEF</sub></button>
+        <button onclick="pressKey('4')">4<sub>GHI</sub></button>
+        <button onclick="pressKey('5')">5<sub>JKL</sub></button>
+        <button onclick="pressKey('6')">6<sub>MNO</sub></button>
+        <button onclick="pressKey('7')">7<sub>PQRS</sub></button>
+        <button onclick="pressKey('8')">8<sub>TUV</sub></button>
+        <button onclick="pressKey('9')">9<sub>WXYZ</sub></button>
+        <button onclick="pressKey('*')">*</button>
+        <button onclick="pressKey('0')">0<sub>+</sub></button>
+        <button onclick="pressKey('#')">#</button>
+      </div>
+
+      <!-- Alpha keyboard -->
+      <div class="alpha-pad" id="alphaPad" style="display:none;">
+        <div class="alpha-rows">
+          <div class="alpha-row">
+            <button class="alpha-key" onclick="pressAlpha('Q')">Q</button>
+            <button class="alpha-key" onclick="pressAlpha('W')">W</button>
+            <button class="alpha-key" onclick="pressAlpha('E')">E</button>
+            <button class="alpha-key" onclick="pressAlpha('R')">R</button>
+            <button class="alpha-key" onclick="pressAlpha('T')">T</button>
+            <button class="alpha-key" onclick="pressAlpha('Y')">Y</button>
+            <button class="alpha-key" onclick="pressAlpha('U')">U</button>
+            <button class="alpha-key" onclick="pressAlpha('I')">I</button>
+            <button class="alpha-key" onclick="pressAlpha('O')">O</button>
+            <button class="alpha-key" onclick="pressAlpha('P')">P</button>
+          </div>
+          <div class="alpha-row alpha-row-center">
+            <button class="alpha-key" onclick="pressAlpha('A')">A</button>
+            <button class="alpha-key" onclick="pressAlpha('S')">S</button>
+            <button class="alpha-key" onclick="pressAlpha('D')">D</button>
+            <button class="alpha-key" onclick="pressAlpha('F')">F</button>
+            <button class="alpha-key" onclick="pressAlpha('G')">G</button>
+            <button class="alpha-key" onclick="pressAlpha('H')">H</button>
+            <button class="alpha-key" onclick="pressAlpha('J')">J</button>
+            <button class="alpha-key" onclick="pressAlpha('K')">K</button>
+            <button class="alpha-key" onclick="pressAlpha('L')">L</button>
+          </div>
+          <div class="alpha-row">
+            <button class="alpha-key alpha-wide" onclick="pressAlpha('Z')">Z</button>
+            <button class="alpha-key" onclick="pressAlpha('X')">X</button>
+            <button class="alpha-key" onclick="pressAlpha('C')">C</button>
+            <button class="alpha-key" onclick="pressAlpha('V')">V</button>
+            <button class="alpha-key" onclick="pressAlpha('B')">B</button>
+            <button class="alpha-key" onclick="pressAlpha('N')">N</button>
+            <button class="alpha-key" onclick="pressAlpha('M')">M</button>
+            <button class="alpha-key alpha-wide alpha-del" onclick="alphaBackspace()">⌫</button>
+          </div>
+          <div class="alpha-row">
+            <button class="alpha-key alpha-space" onclick="pressAlpha(' ')">SPACE</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── LOG PANEL ── -->
+  <div class="log-panel" id="logPanel">
+    <div class="panel-header">
+      <div class="panel-title">Live Session</div>
+      <div class="panel-dot" id="panelDot"></div>
+    </div>
+
+    <div class="voice-viz">
+      <div class="viz-label" id="vizLabel">IVR</div>
+      <div class="waveform" id="waveform"></div>
+    </div>
+
+    <div class="live-transcript" id="liveTranscript"></div>
+
+    <div class="transcript" id="transcript">
+      <div class="empty-state" id="emptyState">
+        <div class="icon">📡</div>
+        <p>Start a call to begin<br>your IVR session</p>
+      </div>
+    </div>
+
+    <div style="padding:0 14px 14px;">
+      <div class="processing" id="processingIndicator">
+        <div class="dots"><span></span><span></span><span></span></div>
+        Processing response...
+      </div>
+    </div>
+  </div>
+
 </div>
-
-<h1 class="ivr-title">Conversational <span>IVR</span></h1>
-<p class="ivr-subtitle">// AI-Powered Voice Interface //</p>
-
-</div>
-
-
-<div class="ivr-card">
-
-<p class="menu-label">Select Service</p>
-
-<div class="menu-grid">
-
-<button class="menu-btn" onclick="selectOption('1')">
-<div class="btn-key">1</div>
-<div class="btn-info">
-<span class="btn-title">Ticket Booking</span>
-<span class="btn-desc">Book a journey</span>
-</div>
-</button>
-
-<button class="menu-btn" onclick="selectOption('2')">
-<div class="btn-key">2</div>
-<div class="btn-info">
-<span class="btn-title">PNR Status</span>
-<span class="btn-desc">Check booking</span>
-</div>
-</button>
-
-<button class="menu-btn" onclick="selectOption('3')">
-<div class="btn-key">3</div>
-<div class="btn-info">
-<span class="btn-title">Cancel Ticket</span>
-<span class="btn-desc">Refund process</span>
-</div>
-</button>
-
-<button class="menu-btn" onclick="selectOption('4')">
-<div class="btn-key">4</div>
-<div class="btn-info">
-<span class="btn-title">Train Availability</span>
-<span class="btn-desc">Check seats</span>
-</div>
-</button>
-
-<button class="menu-btn menu-btn-wide" onclick="selectOption('5')">
-<div class="btn-key">5</div>
-<div class="btn-info">
-<span class="btn-title">Talk to Customer Care Agent</span>
-<span class="btn-desc">Connect to live support</span>
-</div>
-</button>
-
-</div>
-
-
-<div class="input-section">
-
-<label class="input-label">Manual / Voice Input</label>
-
-<div class="input-row">
-
-<input
-type="text"
-id="userInput"
-class="ivr-input"
-placeholder="Speak or type your request..."
-onkeydown="if(event.key==='Enter') sendInput()"
-/>
-
-<button class="ivr-submit" onclick="sendInput()">Send</button>
-
-<button class="ivr-submit" onclick="startVoice()">🎤</button>
-
-</div>
-
-</div>
-
-
-<!-- NEW VOICE RECOGNITION SCREEN -->
-
-<div class="voice-panel">
-
-<div class="voice-title">🎤 Voice Recognition</div>
-
-<div id="voiceStatus">Press microphone and speak</div>
-
-<div id="voiceText"></div>
-
-</div>
-
-
-
-<div class="response-box" id="responseBox">
-
-<div class="response-header">
-<div class="response-avatar">IVR</div>
-<span class="response-title">IRCTC Assistant</span>
-<span class="response-status">● Online</span>
-</div>
-
-<div class="response-body" id="responseText">
-Welcome. Press Start IVR to begin.
-</div>
-
-</div>
-
-
-<div class="ivr-footer">
-<div class="status-dot">SYSTEM ONLINE</div>
-<span class="session-tag" id="sessionTag"></span>
-<button class="restart-btn" onclick="restartSession()">↺ Restart</button>
-</div>
-
-
-</div>
-</div>
-
-
 
 <script>
+  /* ══ STATE ══ */
+  let callActive = false;
+  let callStartTime = null;
+  let timerInterval = null;
+  const sessionId = "user_" + Math.random().toString(36).slice(2, 8);
+  let inputBuffer = [];
+  let expectedDigits = 0;
+  let isBufferingMode = false;
+  let recognition = null;
+  let isListening = false;
+  let voiceSupported = false;
 
-const sessionId = "user123";
-
-// ── State flags ──────────────────────────────────────
-let isSpeaking  = false;  // true while TTS is playing → block mic
-let isListening = false;  // true while recognition is active
-
-document.getElementById("sessionTag").innerText = "SESSION : " + sessionId.toUpperCase();
-
-// ── Set response ─────────────────────────────────────
-function setResponse(text) {
-  document.getElementById("responseText").innerText = text;
-}
-
-// ── Text-to-Speech (mutes mic while speaking) ────────
-function speak(text, onDone) {
-  if (!window.speechSynthesis) { if (onDone) onDone(); return; }
-
-  isSpeaking = true;
-  stopVoice();  // stop mic before speaking
-
-  const utt = new SpeechSynthesisUtterance(text);
-  utt.lang = "en-US";
-
-  utt.onend = function () {
-    isSpeaking = false;
-    document.getElementById("voiceStatus").innerText = "Press microphone and speak";
-    if (onDone) onDone();
-  };
-
-  utt.onerror = function () {
-    isSpeaking = false;
-    if (onDone) onDone();
-  };
-
-  speechSynthesis.cancel();
-  speechSynthesis.speak(utt);
-}
-
-// ── Send input to backend ────────────────────────────
-async function sendInput() {
-  const inputBox = document.getElementById("userInput");
-  const input = inputBox.value.trim();
-  if (!input) return;
-  inputBox.value = "";
-
-  try {
-    const res  = await fetch("/ivr", {
-      method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ session_id: sessionId, input: input })
-    });
-    const data = await res.json();
-    const text = data.text || data.response || "No response";
-    setResponse(text);
-
-    // Speak response, then resume listening when done
-    speak(text, function () {
-      setTimeout(startVoice, 800);
-    });
-
-  } catch (e) {
-    setResponse("Connection error — is the server running?");
+  /* ══ WAVEFORM ══ */
+  const waveform = document.getElementById('waveform');
+  for (let i = 0; i < 28; i++) {
+    const bar = document.createElement('div');
+    bar.className = 'bar';
+    const h = Math.random() * 22 + 5;
+    bar.style.setProperty('--h', h + 'px');
+    bar.style.setProperty('--d', (Math.random() * 0.3 + 0.25) + 's');
+    bar.style.setProperty('--delay', (i * 0.035) + 's');
+    waveform.appendChild(bar);
   }
-}
 
-// ── Menu buttons ─────────────────────────────────────
-function selectOption(val) {
-  document.getElementById("userInput").value = val;
-  sendInput();
-}
-
-// ── Restart session ──────────────────────────────────
-async function restartSession() {
-  try {
-    await fetch("/reset", {
-      method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ session_id: sessionId, input: "" })
-    });
-  } catch (e) {}
-  setResponse("Session restarted. Press a menu option or speak.");
-}
-
-// ── Voice Recognition ─────────────────────────────────
-let recognition = null;
-
-try {
-  const SpeechAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (SpeechAPI) {
-    recognition = new SpeechAPI();
-    recognition.lang = "en-US";
-    recognition.interimResults = true;
+  /* ══ VOICE ══ */
+  function initVoice() {
+    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRec) { voiceSupported = false; document.getElementById('voiceBtnLabel').textContent = 'Not Supported'; return; }
+    voiceSupported = true;
+    recognition = new SpeechRec();
+    recognition.lang = 'en-IN';
     recognition.continuous = false;
-
-    recognition.onstart = function () {
+    recognition.interimResults = true;
+    recognition.onstart = () => {
       isListening = true;
-      document.getElementById("voiceStatus").innerText = "Listening...";
+      document.getElementById('voiceBtn').classList.add('listening');
+      document.getElementById('voiceBtnLabel').textContent = 'Listening...';
+      waveform.classList.add('listening');
+      document.getElementById('vizLabel').textContent = 'MIC';
+      document.getElementById('liveTranscript').classList.add('show');
+      document.getElementById('liveTranscript').textContent = '🎙 Listening...';
     };
-
-    recognition.onresult = function (event) {
-      // Ignore anything captured while TTS was still fading
-      if (isSpeaking) return;
-      let transcript = "";
-      for (let i = 0; i < event.results.length; i++) {
-        transcript += event.results[i][0].transcript;
+    recognition.onresult = (e) => {
+      let interim = '', final = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) final += e.results[i][0].transcript;
+        else interim += e.results[i][0].transcript;
       }
-      document.getElementById("voiceText").innerText  = transcript;
-      document.getElementById("userInput").value = transcript;
+      document.getElementById('liveTranscript').textContent = '🎙 ' + (final || interim);
+      if (final) handleVoiceInput(final.trim());
     };
+    recognition.onerror = (e) => { addMessage('sys', `Voice error: ${e.error}`); stopListening(); };
+    recognition.onend = () => stopListening();
+  }
 
-    recognition.onend = function () {
-      isListening = false;
-      // Only process if we're NOT speaking and there's actual input
-      if (!isSpeaking) {
-        const val = document.getElementById("userInput").value.trim();
-        if (val) {
-          document.getElementById("voiceStatus").innerText = "Processing...";
-          sendInput();
-        } else {
-          document.getElementById("voiceStatus").innerText = "Press microphone and speak";
-        }
-      }
-    };
+  function stopListening() {
+    isListening = false;
+    document.getElementById('voiceBtn').classList.remove('listening');
+    document.getElementById('voiceBtnLabel').textContent = 'Tap to Speak';
+    waveform.classList.remove('listening');
+    document.getElementById('vizLabel').textContent = 'IVR';
+    setTimeout(() => document.getElementById('liveTranscript').classList.remove('show'), 1200);
+  }
 
-    recognition.onerror = function (e) {
-      isListening = false;
-      const status = document.getElementById("voiceStatus");
-      if (e.error === "no-speech") {
-        status.innerText = "No speech detected. Try again.";
-      } else if (e.error === "not-allowed") {
-        status.innerText = "Microphone access denied.";
-      } else {
-        status.innerText = "Error: " + e.error;
+  function toggleVoice() {
+    if (!callActive || !voiceSupported) return;
+    if (isListening) recognition.stop();
+    else { speechSynthesis.cancel(); recognition.start(); }
+  }
+
+  async function handleVoiceInput(text) {
+    stopListening();
+    document.getElementById('liveTranscript').textContent = '';
+    addMessage('voice', `🎙 "${text}"`);
+    const mapped = mapVoiceToIVRInput(text);
+    if (mapped !== text.trim()) addMessage('sys', `↳ Voice mapped to: "${mapped}"`);
+    await sendToIVR(mapped, 'voice');
+  }
+
+  /* ══ TTS ══ */
+  function speak(text, autoListen = false) {
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'en-IN'; 
+    u.rate = 0.9;
+    
+    speechSynthesis.cancel(); 
+    speechSynthesis.speak(u);
+    
+    animateWave(true);
+
+    u.onend = () => {
+      animateWave(false);
+      // If autoListen is true, trigger the microphone automatically
+      if (autoListen && callActive && voiceSupported) {
+        setTimeout(() => {
+          if (!isListening) recognition.start();
+        }, 500); // Small 500ms delay so it doesn't catch its own echo
       }
     };
   }
-} catch (e) {
-  console.warn("SpeechRecognition unavailable:", e);
-}
 
-function startVoice() {
-  if (!recognition) {
-    document.getElementById("voiceStatus").innerText = "Voice not supported in this browser";
-    return;
+  function animateWave(active) {
+    if (!isListening) {
+      waveform.classList.toggle('active', active);
+      if (!active) waveform.classList.remove('listening');
+      document.getElementById('panelDot').classList.toggle('live', active);
+    }
   }
-  if (isSpeaking || isListening) return;  // don't start if bot is talking or already listening
-  document.getElementById("voiceText").innerText = "";
-  try { recognition.start(); } catch (e) { console.warn(e); }
-}
 
-function stopVoice() {
-  if (recognition && isListening) {
-    try { recognition.stop(); } catch (e) {}
+  /* ══ TIMER ══ */
+  function startTimer() {
+    callStartTime = Date.now();
+    timerInterval = setInterval(() => {
+      const e = Math.floor((Date.now() - callStartTime) / 1000);
+      document.getElementById('callTimer').textContent =
+        String(Math.floor(e/60)).padStart(2,'0') + ':' + String(e%60).padStart(2,'0');
+    }, 1000);
   }
-}
-// ── Auto start IVR when page loads ─────────────────
+  function stopTimer() { clearInterval(timerInterval); document.getElementById('callTimer').textContent = '--:--'; }
 
-window.addEventListener("load", function(){
+  /* ══ STATUS ══ */
+  function setStatus(state, label) {
+    const badge = document.getElementById('statusBadge');
+    badge.className = 'status-badge ' + state;
+    document.getElementById('statusText').textContent = label;
+    document.getElementById('phone').className = 'phone ' + state;
+  }
 
-  fetch("/ivr",{
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({
-      session_id:sessionId,
-      input:""
-    })
-  })
-  .then(res=>res.json())
-  .then(data=>{
-      const text=data.text || data.response
-      setResponse(text)
+  /* ══ MESSAGES ══ */
+  function removeEmpty() { const e = document.getElementById('emptyState'); if (e) e.remove(); }
+  function addMessage(type, text, timestamp) {
+    removeEmpty();
+    const t = document.getElementById('transcript');
+    const div = document.createElement('div');
+    div.className = 'msg ' + type;
+    const labels = { ivr: 'IVR', user: 'You', sys: 'System', voice: 'Voice' };
+    const time = timestamp || new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    div.innerHTML = `<div class="msg-meta"><span class="msg-tag ${type}">${labels[type]}</span><span>${time}</span></div><div class="msg-body">${text}</div>`;
+    t.appendChild(div);
+    t.scrollTop = t.scrollHeight;
+  }
+  function setProcessing(show) { document.getElementById('processingIndicator').classList.toggle('show', show); }
 
-      // speak welcome message
-      speak(text,function(){
-        setTimeout(startVoice,800)
-      })
-  })
+  /* ══ BUFFER LOGIC ══ */
+  function detectExpectedInput(responseText) {
+    const t = responseText.toLowerCase();
+    if (t.includes('10 digit pnr') || t.includes('10-digit pnr') || t.includes('pnr number')) return 10;
+    if (t.includes('train number')) return 5;
+    if (t.includes('mobile number') || t.includes('phone number')) return 10;
+    if (t.includes('otp')) return 6;
+    if (t.includes('station code') || t.includes('source station') || t.includes('destination station')) return -1;
+    if (t.includes('date') && t.includes('ddmmyyyy')) return 8;
+    if (t.includes('passenger count') || t.includes('number of passengers')) return 1;
+    if (t.includes('press 1') || t.includes('press 2')) return 0;
+    return 0;
+  }
 
-})
+  function enterBufferMode(n) {
+    isBufferingMode = true; expectedDigits = n; inputBuffer = [];
+    const hint = document.getElementById('inputHint');
+    if (n > 0) { hint.textContent = `Enter ${n}-digit number`; }
+    else { hint.textContent = `Type code, then Send`; }
+    hint.classList.add('waiting');
+    document.getElementById('digitProgress').classList.toggle('show', n > 0);
+    document.getElementById('bufActions').classList.add('show');
+    updateKeyDisplay(); updateProgress();
+  }
 
-window.addEventListener("load", function () {
+  function exitBufferMode() {
+    isBufferingMode = false; expectedDigits = 0; inputBuffer = [];
+    const hint = document.getElementById('inputHint');
+    hint.textContent = 'Enter IVR Option'; hint.classList.remove('waiting');
+    document.getElementById('digitProgress').classList.remove('show');
+    document.getElementById('bufActions').classList.remove('show');
+    updateKeyDisplay();
+  }
 
-  fetch("/ivr", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      session_id: sessionId,
-      input: ""
-    })
-  })
-  .then(response => response.json())
-  .then(data => {
+  function updateKeyDisplay() {
+    const el = document.getElementById('pressedDisplay');
+    const placeholder = document.getElementById('pressedPlaceholder');
+    const count = document.getElementById('bufCount');
+    if (inputBuffer.length === 0 && !isBufferingMode) {
+      placeholder.textContent = '_ _ _'; el.classList.remove('buffering'); count.textContent = '';
+    } else if (inputBuffer.length === 0 && isBufferingMode) {
+      placeholder.textContent = expectedDigits > 0 ? '_'.repeat(Math.min(expectedDigits, 12)) : '_ _ _';
+      el.classList.add('buffering'); count.textContent = '';
+    } else {
+      placeholder.textContent = inputBuffer.join(''); el.classList.add('buffering');
+      if (expectedDigits > 0) count.textContent = `${inputBuffer.length}/${expectedDigits}`;
+    }
+  }
 
-    const text = data.text || data.response || "Welcome to IRCTC IVR";
+  function updateProgress() {
+    if (expectedDigits <= 0) return;
+    const fill = document.getElementById('digitProgressFill');
+    fill.style.width = Math.min((inputBuffer.length / expectedDigits) * 100, 100) + '%';
+    fill.classList.toggle('complete', inputBuffer.length >= expectedDigits);
+  }
 
-    setResponse(text);
+  function clearBuffer() { inputBuffer = []; updateKeyDisplay(); updateProgress(); }
 
-    // speak welcome message
-    speak(text, function () {
+  async function sendBuffered() {
+    if (inputBuffer.length === 0) return;
+    const value = inputBuffer.join('');
+    exitBufferMode();
+    addMessage('user', `Entered: ${value}`);
+    await sendToIVR(value, 'keypad');
+  }
 
-      // start listening after speaking
-      setTimeout(startVoice, 1000);
+  /* ══ CALL ══ */
+  function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+  async function startCall() {
+      if (callActive) return;
+      callActive = true; 
+      inputBuffer = []; 
+      exitBufferMode();
+      
+      document.getElementById('startBtn').disabled = true;
+      document.getElementById('endBtn').disabled = false;
+      document.getElementById('voiceBtn').disabled = false;
+      
+      setStatus('calling', 'Dialing...');
+      addMessage('sys', 'Initiating call to IRCTC +91 139...');
+      
+      await delay(1800);
+      
+      setStatus('active', 'Connected');
+      startTimer();
+      document.getElementById('dialpadWrap').classList.add('unlocked');
+      addMessage('sys', 'Call connected. Waiting for IVR response...');
+      setProcessing(true);
+
+      try {
+        const res = await fetch('/ivr', { 
+          method: 'POST', 
+          headers: {'Content-Type':'application/json'}, 
+          body: JSON.stringify({ session_id: sessionId, input: '' }) 
+        });
+        const data = await res.json();
+        setProcessing(false);
+        
+        const text = data.text || 'Welcome to IRCTC IVR.';
+        addMessage('ivr', text); 
+        
+        // Pass 'true' to enable auto-listening after the welcome message
+        speak(text, true); 
+        
+        const n = detectExpectedInput(text);
+        if (n !== 0) enterBufferMode(n);
+      } catch {
+        setProcessing(false);
+        const fallback = `Welcome to IRCTC Customer Care IVR.\n\nPress 1 – Ticket Booking\nPress 2 – PNR Status\nPress 3 – Cancel Ticket\nPress 4 – Train Availability\nPress 5 – Talk to Customer Care Agent`;
+        addMessage('ivr', fallback); 
+        
+        // Also enable auto-listening for the fallback message
+        speak(fallback, true); 
+      }
+  }
+
+  function endCall() {
+    callActive = false; stopTimer(); speechSynthesis.cancel(); animateWave(false); setProcessing(false); exitBufferMode();
+    if (isListening && recognition) recognition.stop();
+    setStatus('ended', 'Call Ended');
+    document.getElementById('startBtn').disabled = false;
+    document.getElementById('endBtn').disabled = true;
+    document.getElementById('voiceBtn').disabled = true;
+    document.getElementById('dialpadWrap').classList.remove('unlocked');
+    addMessage('sys', 'Call ended.');
+  }
+
+  /* ══ KEY PRESS ══ */
+  async function pressKey(key) {
+    if (!callActive) return;
+    const btns = document.querySelectorAll('#dialpadNum button');
+    const keys = ['1','2','3','4','5','6','7','8','9','*','0','#'];
+    const idx = keys.indexOf(key);
+    if (idx >= 0) { btns[idx].classList.add('flash'); setTimeout(() => btns[idx].classList.remove('flash'), 180); }
+    if (isBufferingMode && expectedDigits === -1) { inputBuffer.push(key); updateKeyDisplay(); return; }
+    if (isBufferingMode && expectedDigits > 0 && /\d/.test(key)) {
+      if (inputBuffer.length >= expectedDigits) return;
+      inputBuffer.push(key); updateKeyDisplay(); updateProgress();
+      if (inputBuffer.length === expectedDigits) { await delay(300); await sendBuffered(); }
+      return;
+    }
+    inputBuffer = [key]; updateKeyDisplay();
+    addMessage('user', `Pressed: ${key}`);
+    await sendToIVR(key, 'keypad');
+    exitBufferMode();
+  }
+
+  /* ══ SEND TO IVR ══ */
+  async function sendToIVR(input, source) {
+    setProcessing(true);
+    try {
+      const res = await fetch('/ivr', { 
+        method: 'POST', 
+        headers: {'Content-Type':'application/json'}, 
+        body: JSON.stringify({ session_id: sessionId, input }) 
+      });
+      const data = await res.json();
+      setProcessing(false);
+      
+      const text = data.text || data.response || `Option selected.`;
+      addMessage('ivr', text);
+      
+      // Pass 'true' to speak() to enable Auto-Listening
+      speak(text, true); 
+      
+      const n = detectExpectedInput(text);
+      if (n !== 0) enterBufferMode(n); else exitBufferMode();
+    } catch {
+      setProcessing(false);
+      const fallback = offlineResponse(input);
+      addMessage('ivr', fallback);
+      
+      // Also enable for fallback responses
+      speak(fallback, true); 
+      
+      exitBufferMode();
+    }
+  }
+  /* ══ OFFLINE FALLBACK ══ */
+  let offlineState = { state: 'menu' };
+  function offlineResponse(input) {
+    const state = offlineState.state;
+    if (state === 'menu') {
+      const map = {
+        '1': () => { offlineState.state = 'source'; return 'Ticket Booking selected.\nPlease enter Source Station code (e.g. NDLS for New Delhi):'; },
+        '2': () => { offlineState.state = 'pnr_input'; return 'PNR Status selected.\nPlease enter your 10 digit PNR number:'; },
+        '3': () => { offlineState.state = 'cancel_pnr'; return 'Cancel Ticket selected.\nPlease enter your 10 digit PNR number to cancel:'; },
+        '4': () => { offlineState.state = 'train_input'; return 'Train Availability selected.\nPlease enter 5-digit Train Number to check availability:'; },
+        '5': () => { offlineState.state = 'menu'; return 'Connecting you to IRCTC Customer Care Agent...\nAll agents are currently busy. Please wait.'; },
+      };
+      const t = input.toLowerCase();
+      if (t.includes('book')) return map['1']();
+      if (t.includes('pnr')) return map['2']();
+      if (t.includes('cancel')) return map['3']();
+      if (t.includes('availab') || t.includes('train')) return map['4']();
+      if (t.includes('agent') || t.includes('care')) return map['5']();
+      if (map[input]) return map[input]();
+      return `Sorry, invalid option.\n\nPress 1 – Ticket Booking\nPress 2 – PNR Status\nPress 3 – Cancel Ticket\nPress 4 – Train Availability\nPress 5 – Customer Care`;
+    }
+    if (state === 'pnr_input') { offlineState.state = 'menu'; return `PNR ${input} Status:\n\nTrain: 12301 HOWRAH RAJDHANI\nFrom: NDLS → HWH\nDate: 29-Mar-2026\nStatus: CONFIRMED – Coach B2, Seat 34\n\nThank you for using IRCTC.\n\nPress 1 – Ticket Booking\nPress 2 – PNR Status\nPress 3 – Cancel Ticket\nPress 4 – Train Availability\nPress 5 – Customer Care`; }
+    if (state === 'cancel_pnr') { offlineState.state = 'confirm_cancel'; offlineState.pnr = input; return `PNR ${input} found:\nTrain: 12301 HOWRAH RAJDHANI | CONFIRMED\n\nTo confirm cancellation, press 1.\nTo go back, press 0.`; }
+    if (state === 'confirm_cancel') { offlineState.state = 'menu'; if (input === '1') return `Your ticket (PNR: ${offlineState.pnr}) has been cancelled.\nRefund of ₹1,245 will be credited in 5-7 working days.\n\nPress 1 – Ticket Booking\nPress 2 – PNR Status\nPress 3 – Cancel Ticket\nPress 4 – Train Availability\nPress 5 – Customer Care`; return `Cancellation aborted. Returning to main menu.\n\nPress 1 – Ticket Booking\nPress 2 – PNR Status\nPress 3 – Cancel Ticket\nPress 4 – Train Availability\nPress 5 – Customer Care`; }
+    if (state === 'train_input') { offlineState.state = 'menu'; return `Train ${input} Availability:\n\nRoute: NDLS → HWH\nDate: 29-Mar-2026\n\n1A: 4 seats available\n2A: 12 seats available\n3A: AVAILABLE\nSL: AVAILABLE\n\nPress 1 – Ticket Booking\nPress 2 – PNR Status\nPress 3 – Cancel Ticket\nPress 4 – Train Availability\nPress 5 – Customer Care`; }
+    if (state === 'source') { offlineState.source = input.toUpperCase(); offlineState.state = 'destination'; return `Source set to ${input.toUpperCase()}.\nPlease enter Destination Station code:`; }
+    if (state === 'destination') { offlineState.destination = input.toUpperCase(); offlineState.state = 'date'; return `Destination set to ${input.toUpperCase()}.\nPlease enter Travel Date in DDMMYYYY format (e.g. 29032026):`; }
+    if (state === 'date') { offlineState.date = input; offlineState.state = 'class'; return `Date set to ${input.slice(0,2)}-${input.slice(2,4)}-${input.slice(4)}.\nSelect class:\n1 – Sleeper (SL)\n2 – 3rd AC (3A)\n3 – 2nd AC (2A)\n4 – 1st AC (1A)`; }
+    if (state === 'class') { const classes = {'1':'Sleeper (SL)','2':'3rd AC (3A)','3':'2nd AC (2A)','4':'1st AC (1A)'}; offlineState.travelClass = classes[input] || '3rd AC'; offlineState.state = 'passengers'; return `Class: ${offlineState.travelClass} selected.\nHow many passengers? (Enter 1–6):`; }
+    if (state === 'passengers') { offlineState.passengers = input; offlineState.state = 'confirm_booking'; return `Booking Summary:\nFrom: ${offlineState.source} → ${offlineState.destination}\nDate: ${(offlineState.date||'').slice(0,2)}-${(offlineState.date||'').slice(2,4)}-${(offlineState.date||'').slice(4)}\nClass: ${offlineState.travelClass}\nPassengers: ${input}\n\nPress 1 to Confirm Booking\nPress 0 to Cancel`; }
+    if (state === 'confirm_booking') { offlineState.state = 'menu'; if (input === '1') { const pnr = Math.floor(1000000000 + Math.random()*9000000000); return `✅ Booking Confirmed!\n\nPNR: ${pnr}\nFrom: ${offlineState.source} → ${offlineState.destination}\nClass: ${offlineState.travelClass}\nPassengers: ${offlineState.passengers}\n\nYour ticket has been booked. Check your registered email/SMS for details.\n\nPress 1 – Ticket Booking\nPress 2 – PNR Status\nPress 3 – Cancel Ticket\nPress 4 – Train Availability\nPress 5 – Customer Care`; } return `Booking cancelled. Returning to main menu.\n\nPress 1 – Ticket Booking\nPress 2 – PNR Status\nPress 3 – Cancel Ticket\nPress 4 – Train Availability\nPress 5 – Customer Care`; }
+    offlineState.state = 'menu';
+    return `Welcome to IRCTC Customer Care IVR.\n\nPress 1 – Ticket Booking\nPress 2 – PNR Status\nPress 3 – Cancel Ticket\nPress 4 – Train Availability\nPress 5 – Talk to Customer Care Agent`;
+  }
+
+  /* ══ DIALPAD MODE ══ */
+  let isAlphaMode = false;
+  function toggleDialpadMode() {
+    isAlphaMode = !isAlphaMode;
+    document.getElementById('modeToggleBtn').classList.toggle('alpha-mode', isAlphaMode);
+    document.getElementById('modeToggleLabel').textContent = isAlphaMode ? '123' : 'ABC';
+    document.getElementById('modeToggleIcon').textContent = isAlphaMode ? '🔢' : '🔡';
+    document.getElementById('modeIndicator').textContent = isAlphaMode ? 'ABC' : 'NUM';
+    document.getElementById('dialpadNum').style.display = isAlphaMode ? 'none' : 'grid';
+    document.getElementById('alphaPad').style.display = isAlphaMode ? 'block' : 'none';
+  }
+
+  function pressAlpha(char) {
+    if (!callActive) return;
+    document.querySelectorAll('.alpha-key').forEach(k => {
+      if (k.textContent.trim() === char || (char === ' ' && k.textContent.trim() === 'SPACE')) {
+        k.classList.add('flash'); setTimeout(() => k.classList.remove('flash'), 180);
+      }
     });
+    if (char !== ' ' || inputBuffer.length > 0) inputBuffer.push(char);
+    if (!isBufferingMode) {
+      isBufferingMode = true; expectedDigits = -1;
+      document.getElementById('inputHint').textContent = 'Type code, then Send';
+      document.getElementById('inputHint').classList.add('waiting');
+      document.getElementById('bufActions').classList.add('show');
+    }
+    updateKeyDisplay();
+  }
 
-  })
-  .catch(() => {
-    setResponse("Unable to connect to IVR service.");
-  });
+  function alphaBackspace() { if (inputBuffer.length > 0) { inputBuffer.pop(); updateKeyDisplay(); } }
 
-});
+  function mapVoiceToIVRInput(text) {
+    const t = text.toLowerCase().trim();
+    
+    // 1. Handle Class Selections
+    if (t.includes('sleeper') || t.includes('sl')) return '1';
+    if (t.includes('third') || t.includes('3rd') || t.includes('3a')) return '2';
+    if (t.includes('second') || t.includes('2nd') || t.includes('2a')) return '3';
+    if (t.includes('first') || t.includes('1a') || t.includes('1st ac')) return '4';
+    
+    // 2. Handle Confirmations
+    if (t.includes('confirm') || t.includes('yes') || t.includes('proceed') || t.includes('ok')) return '1';
+    if (t === 'no' || t === 'back' || t.includes('abort')) return '0';
+
+    // 3. IMPROVED: Handle Number Words for Passengers (1-6)
+    const spokenNumbers = { 
+      'one': '1', 'two': '2', 'three': '3', 'four': '4', 'five': '5', 'six': '6',
+      'single': '1', 'double': '2'
+    };
+    
+    // Check if the transcript contains the number word or is just the number word
+    for (const [word, digit] of Object.entries(spokenNumbers)) {
+      if (t === word || t.includes(word + ' passenger') || t.includes(word + ' person')) {
+        return digit;
+      }
+    }
+
+    // 4. Handle Main Menu Intents
+    if (t.includes('book') || t.includes('ticket booking')) return '1';
+    if (t.includes('pnr') || t.includes('status')) return '2';
+    if (t.includes('cancel')) return '3';
+    if (t.includes('availab') || t.includes('seat')) return '4';
+    if (t.includes('agent') || t.includes('customer care')) return '5';
+
+    // 5. If it's a direct digit (e.g., user says "5"), return it
+    if (/^\d+$/.test(t)) return t;
+
+    return text.trim();
+  }
+
+  initVoice();
 </script>
-
 </body>
 </html>
